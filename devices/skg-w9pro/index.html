@@ -117,9 +117,9 @@ const WRITE="0000ffe1-3c17-d293-8e48-14fe2e4da212";
 const NOTIFY="0000ffe2-3c17-d293-8e48-14fe2e4da212";
 const CMD={mode:0x31,pulse:0x32,temp:0x33,vibMode:0x35,vib:0x36,time:0x3A,pause:0x3C,shutdown:0x01,heartbeat:0x11};
 const MODES=[
- [1,"Soothing Activation","built-in"],[2,"Muscle Exercise","built-in"],[3,"Deep Beating","built-in"],[4,"Heat","built-in"],
- [5,"Online 5","online"],[6,"Online 6","online"],[7,"Online 7","online"],[8,"Online 8","online"],
- [9,"Online 9","online"],[10,"Online 10","online"],[11,"Online 11","online"],[12,"Online 12","online"]];
+ [1,"Soothing Activation","built-in"],[2,"Muscle Exercise","built-in"],[3,"Deep Beating","built-in"],[4,"Hot Compress Mode","built-in"],
+ [5,"Strong Exercise","online"],[6,"Soothing Beating","online"],[7,"Integrated Relief","online"],[8,"Deep Exercise","online"],
+ [9,"Beating Massage","online"],[10,"Pinching & Beating","online"],[11,"Kneading & Push","online"],[12,"Push Decompression & kneading","online"]];
 const RSP={0xB1:"mode",0xB2:"pulse",0xB3:"heat",0xB4:"voice-vib",0xB5:"vib-mode",0xB6:"vib-level",0xB7:"aux-heat",0xBA:"timer",0xBC:"pause/resume",0x81:"power-off",0x91:"heartbeat",0x92:"start"};
 let device=null,server=null,writeChar=null,notifyChar=null,hbTimer=null,setMinutes=0;
 const $=id=>document.getElementById(id);
