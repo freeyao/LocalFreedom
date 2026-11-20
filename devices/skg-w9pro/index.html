@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>W9Pro Controller</title>
+<style>
+  :root{--bg:#0f1115;--card:#1a1d24;--card2:#20242d;--line:#2a2f3a;--fg:#e8eaed;--mut:#9aa0ab;--acc:#4da3ff;--acc2:#2d7fe0;--ok:#39c07a;--err:#e05d5d;}
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  body{margin:0;background:var(--bg);color:var(--fg);font:15px/1.5 -apple-system,system-ui,sans-serif;padding:env(safe-area-inset-top) 12px calc(env(safe-area-inset-bottom) + 12px)}
+  h1{font-size:17px;margin:14px 2px 4px}
+  .statusbar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:0 2px 10px}
+  .pill{font-size:12px;padding:3px 9px;border-radius:20px;background:#33363f;color:var(--mut)}
+  .pill.on{background:rgba(57,192,122,.18);color:var(--ok)}
+  .pill.off{background:rgba(224,93,93,.16);color:var(--err)}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px;margin:10px 0}
+  .card h2{font-size:13px;color:var(--mut);margin:0 0 10px;font-weight:600;letter-spacing:.3px}
+  button{font:inherit;color:var(--fg);background:var(--card2);border:1px solid var(--line);border-radius:10px;padding:11px 10px;cursor:pointer;-webkit-user-select:none}
+  button:active{background:#2c313c}
+  button.primary{background:var(--acc2);border-color:var(--acc2);font-weight:600}
+  button.danger{color:var(--err);border-color:#412}
+  button:disabled{opacity:.4}
+  .row{display:flex;gap:8px;flex-wrap:wrap}.row>button{flex:1;min-width:64px}
+  .modes{display:grid;grid-template-columns:repeat(2,1fr);gap:8px}
+  .modes button{display:flex;flex-direction:column;align-items:flex-start;gap:2px;padding:10px 12px;text-align:left}
+  .modes button .tag{font-size:11px;color:var(--mut)}
+  .seg button.sel,.modes button.sel{background:var(--acc2);border-color:var(--acc2)}
+  .seg button.sel .tag,.modes button.sel .tag{color:#d8e8ff}
+  .grid4{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
+  label.sl{display:block;margin-bottom:6px;color:var(--mut);font-size:13px}
+  .slwrap{display:flex;align-items:center;gap:12px}
+  input[type=range]{flex:1;accent-color:var(--acc)}
+  .val{min-width:34px;text-align:center;font-variant-numeric:tabular-nums;font-size:18px;font-weight:600}
+  input[type=number],input[type=text]{font:inherit;color:var(--fg);background:var(--bg);border:1px solid var(--line);border-radius:9px;padding:9px 10px;width:100%}
+  .fieldrow{display:flex;gap:8px;align-items:center}.fieldrow input{flex:1}.fieldrow button{white-space:nowrap}
+  .hint{color:var(--mut);font-size:12px;margin-top:8px}
+  .readouts{display:flex;gap:10px}
+  .ro{flex:1;background:var(--card2);border:1px solid var(--line);border-radius:10px;padding:10px;text-align:center}
+  .ro .k{font-size:11px;color:var(--mut)}.ro .v{font-size:20px;font-weight:700;font-variant-numeric:tabular-nums}
+  #log{background:#0a0c10;border:1px solid var(--line);border-radius:12px;padding:10px;font:12px/1.5 ui-monospace,Menlo,monospace;height:160px;overflow-y:auto;white-space:pre-wrap;word-break:break-all}
+  .lg-tx{color:var(--acc)}.lg-rx{color:var(--ok)}.lg-sys{color:var(--mut)}.lg-err{color:var(--err)}
+  .disabled-area{opacity:.4;pointer-events:none}
+  details summary{color:var(--mut);font-size:13px;cursor:pointer;padding:4px 0}
+</style>
+</head>
+<body>
+<h1>W9Pro Controller</h1>
+<div class="statusbar">
+  <span id="status" class="pill off">Disconnected</span>
+  <span id="battPill" class="pill" style="display:none"></span>
+  <span id="timePill" class="pill" style="display:none"></span>
+</div>
+<div class="card">
+  <div class="row">
+    <button id="btnConnect" class="primary" style="flex:2">Connect</button>
+    <button id="btnDisconnect" disabled>Disconnect</button>
+  </div>
+  <div class="hint">Power on the device, then connect. Pick the device in the permission dialog.</div>
+</div>
+<div id="controls" class="disabled-area">
+  <div class="card"><h2>Session</h2>
+    <div class="row">
+      <button data-cmd="pause">Pause</button>
+      <button data-cmd="resume">Resume</button>
+      <button class="danger" data-cmd="shutdown">Power off</button>
+    </div>
+  </div>
+  <div class="card"><h2>Mode</h2>
+    <div class="modes" id="modes"></div>
+    <div class="hint">Built-in 1-4 always available. Online 5-12 require the recipe to have been synced by the vendor app.</div>
+  </div>
+  <div class="card"><h2>Pulse level</h2>
+    <div class="slwrap"><input type="range" id="pulse" min="0" max="15" value="0" step="1"><span class="val" id="pulseVal">0</span></div>
+    <div class="hint">Sent on release. Max 15 is a UI default; the device enforces its own limit.</div>
+  </div>
+  <div class="card"><h2>Heat</h2>
+    <div class="grid4 seg" id="segTemp">
+      <button data-temp="0">Off</button><button data-temp="1">Low</button><button data-temp="2">Med</button><button data-temp="3">High</button>
+    </div>
+  </div>
+  <div class="card"><h2>Vibration</h2>
+    <label class="sl">Mode</label>
+    <div class="row seg" id="segVibMode" style="margin-bottom:12px">
+      <button data-vibmode="0">Off</button><button data-vibmode="1">1</button><button data-vibmode="2">2</button><button data-vibmode="3">3</button>
+    </div>
+    <label class="sl">Level</label>
+    <div class="slwrap"><input type="range" id="vib" min="0" max="15" value="0" step="1"><span class="val" id="vibVal">0</span></div>
+  </div>
+  <div class="card"><h2>Timer (min)</h2>
+    <div class="fieldrow"><input type="number" id="timer" min="1" max="120" value="15"><button data-cmd="settime">Set</button></div>
+    <div class="hint">After setting, elapsed / remaining show above (from device heartbeat).</div>
+  </div>
+  <div class="card"><h2>Status</h2>
+    <div class="readouts">
+      <div class="ro"><div class="k">Battery</div><div class="v" id="roBatt">--</div></div>
+      <div class="ro"><div class="k">Elapsed</div><div class="v" id="roRun">--</div></div>
+      <div class="ro"><div class="k">Remaining</div><div class="v" id="roLeft">--</div></div>
+    </div>
+    <div class="hint">Polled every 5s.</div>
+  </div>
+  <div class="card"><details><summary>Advanced · raw HEX</summary>
+    <div style="margin-top:10px">
+      <div class="fieldrow"><input type="text" id="rawHex" placeholder="e.g. A5C00731010351 or 31 01 03"><button data-cmd="sendraw">Send</button></div>
+      <label style="display:flex;gap:8px;align-items:center;margin-top:10px;color:var(--mut);font-size:13px">
+        <input type="checkbox" id="autobcc"> cmd+body only; auto-add A5C0 header, length, BCC
+      </label>
+    </div></details>
+  </div>
+</div>
+<div class="card"><h2 style="display:flex;justify-content:space-between">Log <button id="btnClear" style="padding:2px 10px;font-size:12px">Clear</button></h2>
+  <div id="log"></div>
+</div>
+<script>
+"use strict";
+const SERVICE="0000ffe0-3c17-d293-8e48-14fe2e4da212";
+const WRITE="0000ffe1-3c17-d293-8e48-14fe2e4da212";
+const NOTIFY="0000ffe2-3c17-d293-8e48-14fe2e4da212";
+const CMD={mode:0x31,pulse:0x32,temp:0x33,vibMode:0x35,vib:0x36,time:0x3A,pause:0x3C,shutdown:0x01,heartbeat:0x11};
+const MODES=[
+ [1,"Soothing Activation","built-in"],[2,"Muscle Exercise","built-in"],[3,"Deep Beating","built-in"],[4,"Heat","built-in"],
+ [5,"Online 5","online"],[6,"Online 6","online"],[7,"Online 7","online"],[8,"Online 8","online"],
+ [9,"Online 9","online"],[10,"Online 10","online"],[11,"Online 11","online"],[12,"Online 12","online"]];
+const RSP={0xB1:"mode",0xB2:"pulse",0xB3:"heat",0xB4:"voice-vib",0xB5:"vib-mode",0xB6:"vib-level",0xB7:"aux-heat",0xBA:"timer",0xBC:"pause/resume",0x81:"power-off",0x91:"heartbeat",0x92:"start"};
+let device=null,server=null,writeChar=null,notifyChar=null,hbTimer=null,setMinutes=0;
+const $=id=>document.getElementById(id);
+const logEl=$("log");
+function log(m,c){const t=new Date().toTimeString().slice(0,8);const d=document.createElement("div");d.className="lg-"+(c||"sys");d.textContent="["+t+"] "+m;logEl.appendChild(d);logEl.scrollTop=logEl.scrollHeight;}
+const hex=a=>Array.from(a,b=>b.toString(16).padStart(2,"0").toUpperCase()).join(" ");
+const fmt=s=>{s=Math.max(0,s|0);return (s/60|0)+":"+String(s%60).padStart(2,"0");};
+function frame(cmd,body){const pre=[0xA5,0xC0,body.length+5,cmd,...body];let b=0;for(const x of pre)b^=x;return new Uint8Array([...pre,b&0xff]);}
+function heartbeatFrame(){const d=new Date();return frame(CMD.heartbeat,[d.getFullYear()-2000,d.getMonth()+1,d.getDate(),d.getHours(),d.getMinutes(),d.getSeconds()]);}
+async function send(bytes,note){if(!writeChar){log("Not connected","err");return;}try{if(writeChar.writeValueWithoutResponse)await writeChar.writeValueWithoutResponse(bytes);else await writeChar.writeValue(bytes);if(note!=="hb")log("TX "+hex(bytes)+(note?"  ("+note+")":""),"tx");}catch(e){log("Send failed: "+e.message,"err");}}
+const sendCmd=(cmd,body,note)=>send(frame(cmd,body),note);
+function onNotify(ev){const v=new Uint8Array(ev.target.value.buffer);
+ if(v.length>=7&&v[0]===0xA5&&v[3]===0x91){const run=(v[4]<<8)|v[5],batt=v[6];
+  $("roBatt").textContent=batt+"%";$("roRun").textContent=fmt(run);
+  $("battPill").style.display="";$("battPill").textContent="Battery "+batt+"%";
+  if(setMinutes>0){const left=setMinutes*60-run;$("roLeft").textContent=fmt(left);$("timePill").style.display="";$("timePill").textContent=fmt(left)+" left";}return;}
+ let tag="";if(v.length>=4&&v[0]===0xA5){const n=RSP[v[3]];if(n)tag="  <- "+n;}
+ log("RX "+hex(v)+tag,"rx");}
+function setConnected(on){$("status").textContent=on?"Connected":"Disconnected";$("status").className="pill "+(on?"on":"off");
+ $("btnConnect").disabled=on;$("btnDisconnect").disabled=!on;$("controls").classList.toggle("disabled-area",!on);
+ if(!on){$("battPill").style.display="none";$("timePill").style.display="none";$("roBatt").textContent=$("roRun").textContent=$("roLeft").textContent="--";if(hbTimer){clearInterval(hbTimer);hbTimer=null;}}}
+async function connect(){if(!navigator.bluetooth){log("No Web Bluetooth. Use Bluefy on iOS.","err");return;}
+ try{log("Requesting device...");device=await navigator.bluetooth.requestDevice({filters:[{namePrefix:"SKG"}],optionalServices:[SERVICE]});
+  device.addEventListener("gattserverdisconnected",()=>{setConnected(false);log("Disconnected","err");});
+  log("Connecting...");server=await device.gatt.connect();const svc=await server.getPrimaryService(SERVICE);
+  writeChar=await svc.getCharacteristic(WRITE);notifyChar=await svc.getCharacteristic(NOTIFY);
+  await notifyChar.startNotifications();notifyChar.addEventListener("characteristicvaluechanged",onNotify);
+  setConnected(true);log("Connected","sys");send(heartbeatFrame(),"hb");hbTimer=setInterval(()=>send(heartbeatFrame(),"hb"),5000);
+ }catch(e){log("Connect failed: "+e.message,"err");}}
+async function disconnect(){try{if(device&&device.gatt.connected)device.gatt.disconnect();}catch(e){}setConnected(false);}
+(function(){const box=$("modes");for(const [idx,name,tag] of MODES){const b=document.createElement("button");
+ b.innerHTML="<span>"+name+"</span><span class='tag'>"+tag+" · "+idx+"</span>";
+ b.onclick=()=>{box.querySelectorAll("button").forEach(x=>x.classList.remove("sel"));b.classList.add("sel");sendCmd(CMD.mode,[idx,3],"mode "+idx);};box.appendChild(b);}})();
+function seg(id,fn){$(id).onclick=e=>{const b=e.target.closest("button");if(!b)return;$(id).querySelectorAll("button").forEach(x=>x.classList.remove("sel"));b.classList.add("sel");fn(b);};}
+seg("segTemp",b=>sendCmd(CMD.temp,[+b.dataset.temp,3],"heat"));
+seg("segVibMode",b=>sendCmd(CMD.vibMode,[+b.dataset.vibmode,3],"vib-mode"));
+$("pulse").addEventListener("input",e=>$("pulseVal").textContent=e.target.value);
+$("pulse").addEventListener("change",e=>sendCmd(CMD.pulse,[+e.target.value,3],"pulse "+e.target.value));
+$("vib").addEventListener("input",e=>$("vibVal").textContent=e.target.value);
+$("vib").addEventListener("change",e=>sendCmd(CMD.vib,[+e.target.value,3],"vib "+e.target.value));
+$("btnConnect").onclick=connect;$("btnDisconnect").onclick=disconnect;$("btnClear").onclick=()=>logEl.innerHTML="";
+document.querySelector('[data-cmd="pause"]').onclick=()=>sendCmd(CMD.pause,[2,3],"pause");
+document.querySelector('[data-cmd="resume"]').onclick=()=>sendCmd(CMD.pause,[1,3],"resume");
+document.querySelector('[data-cmd="shutdown"]').onclick=()=>sendCmd(CMD.shutdown,[2,3],"power-off");
+document.querySelector('[data-cmd="settime"]').onclick=()=>{const m=Math.max(1,Math.min(120,+$("timer").value||0));setMinutes=m;sendCmd(CMD.time,[m,3],"timer "+m);};
+document.querySelector('[data-cmd="sendraw"]').onclick=()=>{let s=$("rawHex").value.replace(/0x/gi,"").replace(/[^0-9a-fA-F]/g,"");if(s.length%2){log("odd hex length","err");return;}const by=[];for(let i=0;i<s.length;i+=2)by.push(parseInt(s.substr(i,2),16));if(!by.length)return;if($("autobcc").checked)send(frame(by[0],by.slice(1)),"raw");else send(new Uint8Array(by),"raw-full");};
+if(!navigator.bluetooth)log("No Web Bluetooth. iOS: open in Bluefy (Safari unsupported).","err");
+</script>
+</body>
+</html>
