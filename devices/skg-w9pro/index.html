@@ -129,7 +129,8 @@ const hex=a=>Array.from(a,b=>b.toString(16).padStart(2,"0").toUpperCase()).join(
 const fmt=s=>{s=Math.max(0,s|0);return (s/60|0)+":"+String(s%60).padStart(2,"0");};
 function frame(cmd,body){const pre=[0xA5,0xC0,body.length+5,cmd,...body];let b=0;for(const x of pre)b^=x;return new Uint8Array([...pre,b&0xff]);}
 function heartbeatFrame(){const d=new Date();return frame(CMD.heartbeat,[d.getFullYear()-2000,d.getMonth()+1,d.getDate(),d.getHours(),d.getMinutes(),d.getSeconds()]);}
-async function send(bytes,note){if(!writeChar){log("Not connected","err");return;}try{if(writeChar.writeValueWithoutResponse)await writeChar.writeValueWithoutResponse(bytes);else await writeChar.writeValue(bytes);if(note!=="hb")log("TX "+hex(bytes)+(note?"  ("+note+")":""),"tx");}catch(e){log("Send failed: "+e.message,"err");}}
+let _sendQ=Promise.resolve();
+function send(bytes,note){_sendQ=_sendQ.then(async()=>{if(!writeChar){log("Not connected","err");return;}try{await writeChar.writeValue(bytes);if(note!=="hb")log("TX "+hex(bytes)+(note?"  ("+note+")":""),"tx");}catch(e){log("Send failed: "+e.message,"err");}});return _sendQ;}
 const sendCmd=(cmd,body,note)=>send(frame(cmd,body),note);
 function onNotify(ev){const v=new Uint8Array(ev.target.value.buffer);
  if(v.length>=7&&v[0]===0xA5&&v[3]===0x91){const run=(v[4]<<8)|v[5],batt=v[6];
