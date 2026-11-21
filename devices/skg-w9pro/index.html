@@ -70,8 +70,8 @@
     <div class="hint">Built-in 1-4 always available. Online 5-12 require the recipe to have been synced by the vendor app.</div>
   </div>
   <div class="card"><h2>Pulse level</h2>
-    <div class="slwrap"><input type="range" id="pulse" min="0" max="15" value="0" step="1"><span class="val" id="pulseVal">0</span></div>
-    <div class="hint">Sent on release. Max 15 is a UI default; the device enforces its own limit.</div>
+    <div class="slwrap"><input type="range" id="pulse" min="0" max="9" value="0" step="1"><span class="val" id="pulseVal">0</span></div>
+    <div class="hint">Sent on release. Range 0-9.</div>
   </div>
   <div class="card"><h2>Heat</h2>
     <div class="grid4 seg" id="segTemp">
@@ -81,10 +81,12 @@
   <div class="card"><h2>Vibration</h2>
     <label class="sl">Mode</label>
     <div class="row seg" id="segVibMode" style="margin-bottom:12px">
-      <button data-vibmode="0">Off</button><button data-vibmode="1">1</button><button data-vibmode="2">2</button><button data-vibmode="3">3</button>
+      <button data-vibmode="1">Integrated</button><button data-vibmode="2">Relief</button><button data-vibmode="3">Activation</button>
     </div>
     <label class="sl">Level</label>
-    <div class="slwrap"><input type="range" id="vib" min="0" max="15" value="0" step="1"><span class="val" id="vibVal">0</span></div>
+    <div class="grid4 seg" id="segVib">
+      <button data-vib="0">Off</button><button data-vib="1">Low</button><button data-vib="2">Middle</button><button data-vib="3">High</button>
+    </div>
   </div>
   <div class="card"><h2>Timer (min)</h2>
     <div class="fieldrow"><input type="number" id="timer" min="1" max="120" value="15"><button data-cmd="settime">Set</button></div>
@@ -159,8 +161,7 @@ seg("segTemp",b=>sendCmd(CMD.temp,[+b.dataset.temp,3],"heat"));
 seg("segVibMode",b=>sendCmd(CMD.vibMode,[+b.dataset.vibmode,3],"vib-mode"));
 $("pulse").addEventListener("input",e=>$("pulseVal").textContent=e.target.value);
 $("pulse").addEventListener("change",e=>sendCmd(CMD.pulse,[+e.target.value,3],"pulse "+e.target.value));
-$("vib").addEventListener("input",e=>$("vibVal").textContent=e.target.value);
-$("vib").addEventListener("change",e=>sendCmd(CMD.vib,[+e.target.value,3],"vib "+e.target.value));
+seg("segVib",b=>sendCmd(CMD.vib,[+b.dataset.vib,3],"vib "+b.dataset.vib));
 $("btnConnect").onclick=connect;$("btnDisconnect").onclick=disconnect;$("btnClear").onclick=()=>logEl.innerHTML="";
 document.querySelector('[data-cmd="start"]').onclick=()=>{const t=Math.max(1,Math.min(120,+$("timer").value||15));sendCmd(CMD.startuse,[1,1,0,1,t],"start "+t+"min");};
 document.querySelector('[data-cmd="shutdown"]').onclick=()=>sendCmd(CMD.shutdown,[2,3],"power-off");
