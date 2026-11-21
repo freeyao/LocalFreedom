@@ -50,14 +50,18 @@
   <span id="battPill" class="pill" style="display:none"></span>
   <span id="timePill" class="pill" style="display:none"></span>
 </div>
+
 <div class="card">
   <div class="row">
     <button id="btnConnect" class="primary" style="flex:2">Connect</button>
     <button id="btnDisconnect" disabled>Disconnect</button>
   </div>
-  <div class="hint">Power on the device, then connect. Pick the device in the permission dialog.</div>
+  <div class="hint">Power on the device with its button, then Connect. The belt allows only one BLE connection, so disconnect the official app first.</div>
 </div>
+
 <div id="controls" class="disabled-area">
+
+  <!-- Session: Start puts the device into app-controlled mode (see StartUse note in script). -->
   <div class="card"><h2>Session</h2>
     <div class="row">
       <button class="primary" data-cmd="start">Start</button>
@@ -65,19 +69,23 @@
     </div>
     <div class="hint">After connecting, press Start, then adjust mode / level / heat / timer.</div>
   </div>
+
+  <!-- Pulse technique. NOTE: this list is THIS device's personal set (see MODES in script). -->
   <div class="card"><h2>Mode</h2>
     <div class="modes" id="modes"></div>
-    <div class="hint">Built-in 1-4 always available. Online 5-12 require the recipe to have been synced by the vendor app.</div>
   </div>
+
   <div class="card"><h2>Pulse level</h2>
     <div class="slwrap"><input type="range" id="pulse" min="0" max="9" value="0" step="1"><span class="val" id="pulseVal">0</span></div>
-    <div class="hint">Sent on release. Range 0-9.</div>
+    <div class="hint">Range 0-9 (device max is 9). Sent on release.</div>
   </div>
+
   <div class="card"><h2>Heat</h2>
     <div class="grid4 seg" id="segTemp">
       <button data-temp="0">Off</button><button data-temp="1">Low</button><button data-temp="2">Med</button><button data-temp="3">High</button>
     </div>
   </div>
+
   <div class="card"><h2>Vibration</h2>
     <label class="sl">Mode</label>
     <div class="row seg" id="segVibMode" style="margin-bottom:12px">
@@ -88,19 +96,22 @@
       <button data-vib="0">Off</button><button data-vib="1">Low</button><button data-vib="2">Middle</button><button data-vib="3">High</button>
     </div>
   </div>
+
   <div class="card"><h2>Timer (min)</h2>
     <div class="fieldrow"><input type="number" id="timer" min="1" max="120" value="15"><button data-cmd="settime">Set</button></div>
-    <div class="hint">After setting, elapsed / remaining show above (from device heartbeat).</div>
+    <div class="hint">Applies even without Start. Elapsed / remaining show above (from device heartbeat).</div>
   </div>
+
   <div class="card"><h2>Status</h2>
     <div class="readouts">
       <div class="ro"><div class="k">Battery</div><div class="v" id="roBatt">--</div></div>
       <div class="ro"><div class="k">Elapsed</div><div class="v" id="roRun">--</div></div>
       <div class="ro"><div class="k">Remaining</div><div class="v" id="roLeft">--</div></div>
     </div>
-    <div class="hint">Polled every 5s.</div>
+    <div class="hint">Polled every 5s. Battery is approximate / unverified on this model.</div>
   </div>
-  <div class="card"><details><summary>Advanced · raw HEX</summary>
+
+  <div class="card"><details><summary>Advanced &middot; raw HEX</summary>
     <div style="margin-top:10px">
       <div class="fieldrow"><input type="text" id="rawHex" placeholder="e.g. A5C00731010351 or 31 01 03"><button data-cmd="sendraw">Send</button></div>
       <label style="display:flex;gap:8px;align-items:center;margin-top:10px;color:var(--mut);font-size:13px">
@@ -108,66 +119,268 @@
       </label>
     </div></details>
   </div>
+
 </div>
+
 <div class="card"><h2 style="display:flex;justify-content:space-between">Log <button id="btnClear" style="padding:2px 10px;font-size:12px">Clear</button></h2>
   <div id="log"></div>
 </div>
+
 <script>
 "use strict";
-const SERVICE="0000ffe0-3c17-d293-8e48-14fe2e4da212";
-const WRITE="0000ffe1-3c17-d293-8e48-14fe2e4da212";
-const NOTIFY="0000ffe2-3c17-d293-8e48-14fe2e4da212";
-const CMD={mode:0x31,pulse:0x32,temp:0x33,vibMode:0x35,vib:0x36,time:0x3A,startuse:0x12,shutdown:0x01,heartbeat:0x11};
-const MODES=[
- [1,"Soothing Activation","built-in"],[2,"Muscle Exercise","built-in"],[3,"Deep Beating","built-in"],[4,"Hot Compress Mode","built-in"],
- [5,"Strong Exercise","online"],[6,"Soothing Beating","online"],[7,"Integrated Relief","online"],[8,"Deep Exercise","online"],
- [9,"Beating Massage","online"],[10,"Pinching & Beating","online"],[11,"Kneading & Push","online"],[12,"Push Decompression & kneading","online"]];
-const RSP={0xB1:"mode",0xB2:"pulse",0xB3:"heat",0xB4:"voice-vib",0xB5:"vib-mode",0xB6:"vib-level",0xB7:"aux-heat",0xBA:"timer",0xBC:"pause/resume",0x81:"power-off",0x91:"heartbeat",0x92:"start"};
-let device=null,server=null,writeChar=null,notifyChar=null,hbTimer=null,setMinutes=0;
-const $=id=>document.getElementById(id);
-const logEl=$("log");
-function log(m,c){const t=new Date().toTimeString().slice(0,8);const d=document.createElement("div");d.className="lg-"+(c||"sys");d.textContent="["+t+"] "+m;logEl.appendChild(d);logEl.scrollTop=logEl.scrollHeight;}
-const hex=a=>Array.from(a,b=>b.toString(16).padStart(2,"0").toUpperCase()).join(" ");
-const fmt=s=>{s=Math.max(0,s|0);return (s/60|0)+":"+String(s%60).padStart(2,"0");};
-function frame(cmd,body){const pre=[0xA5,0xC0,body.length+5,cmd,...body];let b=0;for(const x of pre)b^=x;return new Uint8Array([...pre,b&0xff]);}
-function heartbeatFrame(){const d=new Date();return frame(CMD.heartbeat,[d.getFullYear()-2000,d.getMonth()+1,d.getDate(),d.getHours(),d.getMinutes(),d.getSeconds()]);}
-let _sendQ=Promise.resolve();
-function send(bytes,note){_sendQ=_sendQ.then(async()=>{if(!writeChar){log("Not connected","err");return;}try{await writeChar.writeValue(bytes);if(note!=="hb")log("TX "+hex(bytes)+(note?"  ("+note+")":""),"tx");}catch(e){log("Send failed: "+e.message,"err");}});return _sendQ;}
-const sendCmd=(cmd,body,note)=>send(frame(cmd,body),note);
-function onNotify(ev){const v=new Uint8Array(ev.target.value.buffer);
- if(v.length>=7&&v[0]===0xA5&&v[3]===0x91){const run=(v[4]<<8)|v[5],batt=v[6];
-  $("roBatt").textContent=batt+"%";$("roRun").textContent=fmt(run);
-  $("battPill").style.display="";$("battPill").textContent="Battery "+batt+"%";
-  if(setMinutes>0){const left=setMinutes*60-run;$("roLeft").textContent=fmt(left);$("timePill").style.display="";$("timePill").textContent=fmt(left)+" left";}return;}
- let tag="";if(v.length>=4&&v[0]===0xA5){const n=RSP[v[3]];if(n)tag="  <- "+n;}
- log("RX "+hex(v)+tag,"rx");}
-function setConnected(on){$("status").textContent=on?"Connected":"Disconnected";$("status").className="pill "+(on?"on":"off");
- $("btnConnect").disabled=on;$("btnDisconnect").disabled=!on;$("controls").classList.toggle("disabled-area",!on);
- if(!on){$("battPill").style.display="none";$("timePill").style.display="none";$("roBatt").textContent=$("roRun").textContent=$("roLeft").textContent="--";if(hbTimer){clearInterval(hbTimer);hbTimer=null;}}}
-async function connect(){if(!navigator.bluetooth){log("No Web Bluetooth. Use Bluefy on iOS.","err");return;}
- try{log("Requesting device...");device=await navigator.bluetooth.requestDevice({filters:[{namePrefix:"SKG"}],optionalServices:[SERVICE]});
-  device.addEventListener("gattserverdisconnected",()=>{setConnected(false);log("Disconnected","err");});
-  log("Connecting...");server=await device.gatt.connect();const svc=await server.getPrimaryService(SERVICE);
-  writeChar=await svc.getCharacteristic(WRITE);notifyChar=await svc.getCharacteristic(NOTIFY);
-  await notifyChar.startNotifications();notifyChar.addEventListener("characteristicvaluechanged",onNotify);
-  setConnected(true);log("Connected","sys");send(heartbeatFrame(),"hb");hbTimer=setInterval(()=>send(heartbeatFrame(),"hb"),5000);
- }catch(e){log("Connect failed: "+e.message,"err");}}
-async function disconnect(){try{if(device&&device.gatt.connected)device.gatt.disconnect();}catch(e){}setConnected(false);}
-(function(){const box=$("modes");for(const [idx,name,tag] of MODES){const b=document.createElement("button");
- b.innerHTML="<span>"+name+"</span><span class='tag'>"+tag+" · "+idx+"</span>";
- b.onclick=()=>{box.querySelectorAll("button").forEach(x=>x.classList.remove("sel"));b.classList.add("sel");sendCmd(CMD.mode,[idx,3],"mode "+idx);};box.appendChild(b);}})();
-function seg(id,fn){$(id).onclick=e=>{const b=e.target.closest("button");if(!b)return;$(id).querySelectorAll("button").forEach(x=>x.classList.remove("sel"));b.classList.add("sel");fn(b);};}
-seg("segTemp",b=>sendCmd(CMD.temp,[+b.dataset.temp,3],"heat"));
-seg("segVibMode",b=>sendCmd(CMD.vibMode,[+b.dataset.vibmode,3],"vib-mode"));
-$("pulse").addEventListener("input",e=>$("pulseVal").textContent=e.target.value);
-$("pulse").addEventListener("change",e=>sendCmd(CMD.pulse,[+e.target.value,3],"pulse "+e.target.value));
-seg("segVib",b=>sendCmd(CMD.vib,[+b.dataset.vib,3],"vib "+b.dataset.vib));
-$("btnConnect").onclick=connect;$("btnDisconnect").onclick=disconnect;$("btnClear").onclick=()=>logEl.innerHTML="";
-document.querySelector('[data-cmd="start"]').onclick=()=>{const t=Math.max(1,Math.min(120,+$("timer").value||15));sendCmd(CMD.startuse,[1,1,0,1,t],"start "+t+"min");};
-document.querySelector('[data-cmd="shutdown"]').onclick=()=>sendCmd(CMD.shutdown,[2,3],"power-off");
-document.querySelector('[data-cmd="settime"]').onclick=()=>{const m=Math.max(1,Math.min(120,+$("timer").value||0));setMinutes=m;sendCmd(CMD.time,[m,3],"timer "+m);};
-document.querySelector('[data-cmd="sendraw"]').onclick=()=>{let s=$("rawHex").value.replace(/0x/gi,"").replace(/[^0-9a-fA-F]/g,"");if(s.length%2){log("odd hex length","err");return;}const by=[];for(let i=0;i<s.length;i+=2)by.push(parseInt(s.substr(i,2),16));if(!by.length)return;if($("autobcc").checked)send(frame(by[0],by.slice(1)),"raw");else send(new Uint8Array(by),"raw-full");};
-if(!navigator.bluetooth)log("No Web Bluetooth. iOS: open in Bluefy (Safari unsupported).","err");
+/*
+ * SKG W9Pro — Web Bluetooth controller.
+ *
+ * Transport: BLE GATT. The belt accepts ONE connection at a time, so the
+ * official app must be disconnected before this page can connect.
+ *
+ * GATT:
+ *   Service 0000ffe0-3c17-d293-8e48-14fe2e4da212
+ *     FFE1 (write)  — send commands here
+ *     FFE2 (notify) — device replies arrive here
+ *
+ * Frame:  A5 C0 <len> <cmd> <value> 03 <bcc>
+ *   A5 C0 : fixed header for control messages
+ *   len   : payload length + 5
+ *   03    : operation source = APP
+ *   bcc   : XOR of every preceding byte (single byte)
+ * The control path is plaintext — no pairing, no auth, no encryption.
+ *
+ * Session (important): pulse / mode / vibration values are only APPLIED after
+ * a StartUse (0x12). Without it the device ACKs each command but keeps running
+ * its button-default program. So: Connect -> Start -> adjust. The timer (0x3A)
+ * is not session-gated and applies either way.
+ *
+ * Write type: writeValue (with response), serialized through one promise
+ * queue. write-without-response dropped every command after the first on
+ * iOS / Bluefy.
+ *
+ * Device ranges (observed): pulse level 0-9, heat 0-3, vibration level 0-3.
+ *
+ * Replies echo the device's ACTUAL current value (not the requested one), so a
+ * clamp or a rejected mode shows up as a mismatching echo.
+ */
+
+const SERVICE = "0000ffe0-3c17-d293-8e48-14fe2e4da212";
+const WRITE   = "0000ffe1-3c17-d293-8e48-14fe2e4da212";
+const NOTIFY  = "0000ffe2-3c17-d293-8e48-14fe2e4da212";
+
+// Request command codes (byte 4 of an outgoing frame).
+const CMD = {
+  mode:      0x31,  // select pulse technique; value = cmdIndex
+  pulse:     0x32,  // pulse level 0-9
+  temp:      0x33,  // heat 0=off 1=low 2=mid 3=high
+  vibMode:   0x35,  // vibration mode (see MODE values below)
+  vib:       0x36,  // vibration level 0-3
+  time:      0x3A,  // timer, minutes
+  startuse:  0x12,  // begin an app-controlled session; body [model,level,heat,voice,minutes]
+  shutdown:  0x01,  // power off (drops the connection)
+  heartbeat: 0x11,  // status poll; body = [yy-2000,mm,dd,hh,mm,ss]
+};
+
+/*
+ * Pulse techniques for THIS device (cmdIndex -> display name).
+ *
+ * These are the owner's personally synced set, read off the device by sweeping
+ * ChangeModel 1..12 and watching which indices echoed back (1-8 valid, 9-12
+ * empty). Names are taken from the official app's control screen, in grid
+ * order. A different W9Pro has a different set, so this mapping is NOT portable
+ * — re-derive it per device. Everything else in this file is generic.
+ */
+const MODES = [
+  [1, "Integrated"],
+  [2, "Beating"],
+  [3, "Kneading"],
+  [4, "Manipulation"],
+  [5, "Decompression"],
+  [6, "Exercise"],
+  [7, "Right-side"],
+  [8, "Deep Kneading"],
+];
+
+// Vibration mode values (1/2/3) are inferred from the app's 3 options, order
+// unverified against the device.
+const VIB_MODES = [[1, "Integrated"], [2, "Relief"], [3, "Activation"]];
+
+// Response command codes (byte 4 of an incoming frame) -> label, for the log.
+const RSP = {
+  0xB1:"mode", 0xB2:"pulse", 0xB3:"heat", 0xB4:"voice-vib", 0xB5:"vib-mode",
+  0xB6:"vib-level", 0xB7:"aux-heat", 0xBA:"timer", 0x81:"power-off",
+  0x91:"heartbeat", 0x92:"start", 0xEF:"exception",
+};
+
+let device=null, server=null, writeChar=null, notifyChar=null, hbTimer=null;
+let setMinutes=0;  // timer value set this session, used to compute "remaining"
+
+const $ = id => document.getElementById(id);
+const logEl = $("log");
+function log(msg, cls){
+  const t=new Date().toTimeString().slice(0,8);
+  const d=document.createElement("div");
+  d.className="lg-"+(cls||"sys");
+  d.textContent="["+t+"] "+msg;
+  logEl.appendChild(d);
+  logEl.scrollTop=logEl.scrollHeight;
+}
+const hex = a => Array.from(a, b => b.toString(16).padStart(2,"0").toUpperCase()).join(" ");
+const fmt = s => { s=Math.max(0,s|0); return (s/60|0)+":"+String(s%60).padStart(2,"0"); };
+
+// Build a full frame: header + length + cmd + body + BCC.
+function frame(cmd, body){
+  const pre=[0xA5, 0xC0, body.length+5, cmd, ...body];
+  let b=0; for(const x of pre) b^=x;     // BCC = XOR of all preceding bytes
+  return new Uint8Array([...pre, b&0xff]);
+}
+
+// Heartbeat request carries the current date/time.
+function heartbeatFrame(){
+  const d=new Date();
+  return frame(CMD.heartbeat, [d.getFullYear()-2000, d.getMonth()+1, d.getDate(), d.getHours(), d.getMinutes(), d.getSeconds()]);
+}
+
+// All writes go through one serialized queue, using write-with-response.
+let _sendQ = Promise.resolve();
+function send(bytes, note){
+  _sendQ = _sendQ.then(async () => {
+    if(!writeChar){ log("Not connected","err"); return; }
+    try{
+      await writeChar.writeValue(bytes);
+      if(note!=="hb") log("TX "+hex(bytes)+(note?"  ("+note+")":""), "tx");
+    }catch(e){ log("Send failed: "+e.message, "err"); }
+  });
+  return _sendQ;
+}
+const sendCmd = (cmd, body, note) => send(frame(cmd, body), note);
+
+// Incoming notifications from FFE2.
+function onNotify(ev){
+  const v=new Uint8Array(ev.target.value.buffer);
+
+  // Heartbeat reply (0x91): runSecond (big-endian short) then battery byte.
+  // NOTE: this is the old-protocol layout; on W9Pro the battery byte is
+  // approximate — treat the number as a rough indicator only.
+  if(v.length>=7 && v[0]===0xA5 && v[3]===0x91){
+    const run=(v[4]<<8)|v[5], batt=v[6];
+    $("roBatt").textContent=batt+"%";
+    $("roRun").textContent=fmt(run);
+    $("battPill").style.display="";
+    $("battPill").textContent="Battery "+batt+"%";
+    if(setMinutes>0){
+      const left=setMinutes*60-run;
+      $("roLeft").textContent=fmt(left);
+      $("timePill").style.display="";
+      $("timePill").textContent=fmt(left)+" left";
+    }
+    return;
+  }
+
+  let tag="";
+  if(v.length>=4 && v[0]===0xA5){ const n=RSP[v[3]]; if(n) tag="  <- "+n; }
+  log("RX "+hex(v)+tag, "rx");
+}
+
+function setConnected(on){
+  $("status").textContent = on?"Connected":"Disconnected";
+  $("status").className = "pill "+(on?"on":"off");
+  $("btnConnect").disabled = on;
+  $("btnDisconnect").disabled = !on;
+  $("controls").classList.toggle("disabled-area", !on);
+  if(!on){
+    $("battPill").style.display="none";
+    $("timePill").style.display="none";
+    $("roBatt").textContent=$("roRun").textContent=$("roLeft").textContent="--";
+    if(hbTimer){ clearInterval(hbTimer); hbTimer=null; }
+  }
+}
+
+async function connect(){
+  if(!navigator.bluetooth){ log("No Web Bluetooth. On iOS use Bluefy (Safari is unsupported).","err"); return; }
+  try{
+    log("Requesting device...");
+    device = await navigator.bluetooth.requestDevice({ filters:[{namePrefix:"SKG"}], optionalServices:[SERVICE] });
+    device.addEventListener("gattserverdisconnected", () => { setConnected(false); log("Disconnected","err"); });
+    log("Connecting...");
+    server = await device.gatt.connect();
+    const svc = await server.getPrimaryService(SERVICE);
+    writeChar = await svc.getCharacteristic(WRITE);
+    notifyChar = await svc.getCharacteristic(NOTIFY);
+    await notifyChar.startNotifications();
+    notifyChar.addEventListener("characteristicvaluechanged", onNotify);
+    setConnected(true);
+    log("Connected","sys");
+    send(heartbeatFrame(),"hb");                               // first status poll
+    hbTimer = setInterval(() => send(heartbeatFrame(),"hb"), 5000);
+  }catch(e){ log("Connect failed: "+e.message,"err"); }
+}
+async function disconnect(){
+  try{ if(device && device.gatt.connected) device.gatt.disconnect(); }catch(e){}
+  setConnected(false);
+}
+
+// ---- Wire up the UI ----
+
+// Pulse technique buttons, built from MODES.
+(function buildModes(){
+  const box=$("modes");
+  for(const [idx,name] of MODES){
+    const b=document.createElement("button");
+    b.innerHTML = "<span>"+name+"</span><span class='tag'>"+idx+"</span>";
+    b.onclick = () => {
+      box.querySelectorAll("button").forEach(x=>x.classList.remove("sel"));
+      b.classList.add("sel");
+      sendCmd(CMD.mode, [idx,3], "mode "+idx);
+    };
+    box.appendChild(b);
+  }
+})();
+
+// Generic segmented-button helper: single selection, sends via fn(button).
+function seg(id, fn){
+  $(id).onclick = e => {
+    const b=e.target.closest("button"); if(!b) return;
+    $(id).querySelectorAll("button").forEach(x=>x.classList.remove("sel"));
+    b.classList.add("sel");
+    fn(b);
+  };
+}
+seg("segTemp",    b => sendCmd(CMD.temp,    [+b.dataset.temp,    3], "heat"));
+seg("segVibMode", b => sendCmd(CMD.vibMode, [+b.dataset.vibmode, 3], "vib-mode"));
+seg("segVib",     b => sendCmd(CMD.vib,     [+b.dataset.vib,     3], "vib "+b.dataset.vib));
+
+// Pulse level slider: show while dragging, send on release.
+$("pulse").addEventListener("input",  e => $("pulseVal").textContent = e.target.value);
+$("pulse").addEventListener("change", e => sendCmd(CMD.pulse, [+e.target.value, 3], "pulse "+e.target.value));
+
+$("btnConnect").onclick    = connect;
+$("btnDisconnect").onclick = disconnect;
+$("btnClear").onclick      = () => logEl.innerHTML="";
+
+// Start: StartUse with a gentle default (technique 1, level 1, no heat), timer
+// taken from the Timer field. Required before pulse/mode changes take effect.
+document.querySelector('[data-cmd="start"]').onclick = () => {
+  const t=Math.max(1, Math.min(120, +$("timer").value||15));
+  setMinutes=t;
+  sendCmd(CMD.startuse, [1,1,0,1,t], "start "+t+"min");
+};
+document.querySelector('[data-cmd="shutdown"]').onclick = () => sendCmd(CMD.shutdown, [2,3], "power-off");
+document.querySelector('[data-cmd="settime"]').onclick  = () => {
+  const m=Math.max(1, Math.min(120, +$("timer").value||0));
+  setMinutes=m;
+  sendCmd(CMD.time, [m,3], "timer "+m);
+};
+
+// Advanced: send a raw hex frame. With auto-add, you type cmd+body and the
+// header/length/BCC are added for you.
+document.querySelector('[data-cmd="sendraw"]').onclick = () => {
+  let s=$("rawHex").value.replace(/0x/gi,"").replace(/[^0-9a-fA-F]/g,"");
+  if(s.length%2){ log("odd hex length","err"); return; }
+  const by=[]; for(let i=0;i<s.length;i+=2) by.push(parseInt(s.substr(i,2),16));
+  if(!by.length) return;
+  if($("autobcc").checked) send(frame(by[0], by.slice(1)), "raw");
+  else send(new Uint8Array(by), "raw-full");
+};
+
+if(!navigator.bluetooth) log("No Web Bluetooth. On iOS open this page in Bluefy (Safari is unsupported).","err");
 </script>
 </body>
 </html>
